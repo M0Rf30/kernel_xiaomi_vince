@@ -808,7 +808,6 @@ struct rq {
 
 	int cstate, wakeup_latency, wakeup_energy;
 	u64 window_start;
-	s64 cum_window_start;
 	unsigned long walt_flags;
 
 	u64 cur_irqload;
@@ -2492,11 +2491,6 @@ static inline int compute_load_scale_factor(struct sched_cluster *cluster)
 	return load_scale;
 }
 
-static inline int cpu_max_power_cost(int cpu)
-{
-	return cpu_rq(cpu)->cluster->max_power_cost;
-}
-
 static inline int cpu_min_power_cost(int cpu)
 {
 	return cpu_rq(cpu)->cluster->min_power_cost;
@@ -2828,11 +2822,6 @@ static inline void update_cpu_cluster_capacity(const cpumask_t *cpus) { }
 static inline unsigned long thermal_cap(int cpu)
 {
 	return cpu_rq(cpu)->cpu_capacity_orig;
-}
-
-static inline int cpu_max_power_cost(int cpu)
-{
-	return capacity_orig_of(cpu);
 }
 #endif
 
