@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2018, 2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -97,15 +97,6 @@
 
 #define QUSB2PHY_REFCLK_ENABLE		BIT(0)
 
-#define QUSB2PHY_PLL_AUTOPGM_CTL1 0x1C
-#define QUSB2PHY_PLL_PWR_CTL 0x18
-#define REF_BUF_EN BIT(0)
-#define REXT_EN BIT(1)
-#define PLL_BYPASSNL BIT(2)
-#define QUSB2PHY_PORT_QUICKCHARGE1 0x70
-#define QUSB2PHY_PORT_QUICKCHARGE2 0x74
-#define QUSB2PHY_PORT_INT_STATUS 0xF0
-
 static unsigned int tune1;
 module_param(tune1, uint, 0644);
 MODULE_PARM_DESC(tune1, "QUSB PHY TUNE1");
@@ -156,7 +147,6 @@ struct qusb_phy {
 	int			tune2_efuse_correction;
 
 	bool			power_enabled;
-	bool			clocks_enabled;
 	bool			cable_connected;
 	bool			suspended;
 	bool			ulpi_mode;
@@ -181,19 +171,15 @@ struct qusb_phy {
 
 static void qusb_phy_enable_clocks(struct qusb_phy *qphy, bool on)
 {
-	dev_dbg(qphy->phy.dev, "%s(): clocks_enabled:%d on:%d\n",
-			__func__, qphy->clocks_enabled, on);
+	dev_dbg(qphy->phy.dev, "%s(): on:%d\n", __func__, on);
 
-	if (!qphy->clocks_enabled && on) {
+	if (on) {
 		clk_prepare_enable(qphy->ref_clk_src);
 		clk_prepare_enable(qphy->ref_clk);
 		clk_prepare_enable(qphy->iface_clk);
 		clk_prepare_enable(qphy->core_clk);
 		clk_prepare_enable(qphy->cfg_ahb_clk);
-		qphy->clocks_enabled = true;
-	}
-
-	if (qphy->clocks_enabled && !on) {
+	} else {
 		clk_disable_unprepare(qphy->cfg_ahb_clk);
 		/*
 		 * FSM depedency beween iface_clk and core_clk.
@@ -203,11 +189,8 @@ static void qusb_phy_enable_clocks(struct qusb_phy *qphy, bool on)
 		clk_disable_unprepare(qphy->iface_clk);
 		clk_disable_unprepare(qphy->ref_clk);
 		clk_disable_unprepare(qphy->ref_clk_src);
-		qphy->clocks_enabled = false;
 	}
 
-	dev_dbg(qphy->phy.dev, "%s(): clocks_enabled:%d\n", __func__,
-						qphy->clocks_enabled);
 }
 
 static int qusb_phy_gdsc(struct qusb_phy *qphy, bool on)
@@ -450,8 +433,6 @@ static int qusb_phy_init(struct usb_phy *phy)
 	if (ret)
 		return ret;
 
-	qusb_phy_enable_clocks(qphy, true);
-
 	/*
 	 * ref clock is enabled by default after power on reset. Linux clock
 	 * driver will disable this clock as part of late init if peripheral
@@ -643,61 +624,6 @@ static void qusb_phy_shutdown(struct usb_phy *phy)
 
 	qusb_phy_enable_clocks(qphy, false);
 }
-
-int qusb_phy_dumpreg(struct usb_phy *phy)
-{
-	struct qusb_phy *qphy = container_of(phy, struct qusb_phy,phy);
-	pr_debug("%s:dump_phy_registers\n", __func__);
-	pr_debug("PORT_PWRDWN:%08x\n",readl_relaxed(qphy->base+ QUSB2PHY_PORT_POWERDOWN));
-	pr_debug("UTMCTL1:%08x\n",readl_relaxed(qphy->base + QUSB2PHY_PORT_UTMI_CTRL1));
-	pr_debug("UTMCTL2:%08x\n",readl_relaxed(qphy->base + QUSB2PHY_PORT_UTMI_CTRL2));
-	pr_debug("AUTOPGM_CTL1:%08x\n",readl_relaxed(qphy->base + QUSB2PHY_PLL_AUTOPGM_CTL1));
-	pr_debug("PORT_PWRDWN:%08x\n",readl_relaxed(qphy->base + QUSB2PHY_PLL_PWR_CTL));
-	pr_debug("linestate:%08x\n",readl_relaxed(qphy->base + QUSB2PHY_PORT_UTMI_STATUS));
-	pr_debug("!!\n!!INT_STATUS:%08x\n",readl_relaxed(qphy->base + QUSB2PHY_PORT_INT_STATUS));
-	return 0;
-}
-
-int qusb_phy_run_dcd(struct usb_phy *phy)
-{
-	struct qusb_phy *qphy = container_of(phy, struct qusb_phy,phy);
-
-	u8 int_status;
-
-	writel_relaxed(0x23,qphy->base + QUSB2PHY_PORT_POWERDOWN);
-	/*23*/
-	writel_relaxed(0x35,qphy-> base + QUSB2PHY_PORT_UTMI_CTRL1);
-	writel_relaxed(0xC0,qphy->base + QUSB2PHY_PORT_UTMI_CTRL2);
-	writel_relaxed(0x05,qphy->base + QUSB2PHY_PLL_AUTOPGM_CTL1);
-	writel_relaxed(0x22,qphy->base + QUSB2PHY_PORT_POWERDOWN);
-	/*22*/
-	writel_relaxed(0x17,qphy->base+ QUSB2PHY_PLL_PWR_CTL);
-	usleep_range(5, 1000);
-	writel_relaxed(0x15,qphy->base+ QUSB2PHY_PLL_AUTOPGM_CTL1);
-	usleep_range(50, 1000);
-	writel_relaxed(0x09,
-	qphy->base+ QUSB2PHY_PORT_QUICKCHARGE2);
-	writel_relaxed(0x00,qphy->base+ QUSB2PHY_PORT_QUICKCHARGE1);
-	writel_relaxed(0x00,qphy->base+ QUSB2PHY_PORT_QUICKCHARGE2);
-	writel_relaxed(0x1F,qphy->base+ QUSB2PHY_PORT_INTR_CTRL);
-	writel_relaxed(0x08,qphy->base+ QUSB2PHY_PORT_QUICKCHARGE1);
-	usleep_range(1000, 2000);
-	int_status = readl_relaxed(qphy->base+ QUSB2PHY_PORT_INT_STATUS);
-	qusb_phy_dumpreg(phy);
-	writel_relaxed(CLAMP_N_EN | FREEZIO_N | POWER_DOWN,qphy->base+ QUSB2PHY_PORT_POWERDOWN);
-	/*23*/
-	writel_relaxed(0x95,qphy->base+ QUSB2PHY_PLL_AUTOPGM_CTL1);
-	writel_relaxed(0x80,qphy->base+ QUSB2PHY_PORT_UTMI_CTRL2);
-	writel_relaxed(0x10,qphy->base+ QUSB2PHY_PORT_UTMI_CTRL1);
-	writel_relaxed(CLAMP_N_EN |FREEZIO_N,qphy->base+ QUSB2PHY_PORT_POWERDOWN);
-
-	int_status = int_status & 0x5;
-	pr_debug("%s: int_status:%x\n", __func__, int_status);
-
-	return int_status;
-}
-EXPORT_SYMBOL(qusb_phy_run_dcd);
-
 /**
  * Performs QUSB2 PHY suspend/resume functionality.
  *
@@ -710,7 +636,7 @@ static int qusb_phy_set_suspend(struct usb_phy *phy, int suspend)
 	struct qusb_phy *qphy = container_of(phy, struct qusb_phy, phy);
 	u32 linestate = 0, intr_mask = 0;
 
-	if (qphy->suspended && suspend) {
+	if (qphy->suspended == suspend) {
 		dev_dbg(phy->dev, "%s: USB PHY is already suspended\n",
 			__func__);
 		return 0;
@@ -1101,8 +1027,8 @@ static int qusb_phy_probe(struct platform_device *pdev)
 		if (IS_ERR(qphy->iface_clk)) {
 			ret = PTR_ERR(qphy->iface_clk);
 			qphy->iface_clk = NULL;
-		if (ret == -EPROBE_DEFER)
-			return ret;
+			if (ret == -EPROBE_DEFER)
+				return ret;
 			dev_err(dev, "couldn't get iface_clk(%d)\n", ret);
 		}
 	}
@@ -1291,6 +1217,8 @@ static int qusb_phy_probe(struct platform_device *pdev)
 	if (qphy->tcsr_clamp_dig_n)
 		writel_relaxed(0x0, qphy->tcsr_clamp_dig_n);
 
+	qphy->suspended = true;
+
 	return ret;
 }
 
@@ -1299,15 +1227,8 @@ static int qusb_phy_remove(struct platform_device *pdev)
 	struct qusb_phy *qphy = platform_get_drvdata(pdev);
 
 	usb_remove_phy(&qphy->phy);
-
-	if (qphy->clocks_enabled) {
-		clk_disable_unprepare(qphy->cfg_ahb_clk);
-		clk_disable_unprepare(qphy->ref_clk);
-		clk_disable_unprepare(qphy->ref_clk_src);
-		qphy->clocks_enabled = false;
-	}
-
-	qusb_phy_enable_power(qphy, false);
+	qphy->cable_connected = false;
+	qusb_phy_set_suspend(&qphy->phy, true);
 
 	return 0;
 }

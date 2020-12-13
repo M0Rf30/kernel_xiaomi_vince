@@ -1,4 +1,4 @@
-/* Copyright (c) 2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2017-2018,2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -103,7 +103,7 @@ struct cpu_gpu_lock {
 /* Size of the performance counter save/restore block (in bytes) */
 #define A6XX_CP_PERFCOUNTER_SAVE_RESTORE_SIZE   (4 * 1024)
 
-#define A6XX_CP_RB_CNTL_DEFAULT (((ilog2(4) << 8) & 0x1F00) | \
+#define A6XX_CP_RB_CNTL_DEFAULT ((1 << 27) | ((ilog2(4) << 8) & 0x1F00) | \
 		(ilog2(KGSL_RB_DWORDS >> 1) & 0x3F))
 
 /* Preemption functions */
@@ -129,8 +129,5 @@ void a6xx_preemption_context_destroy(struct kgsl_context *context);
 
 void a6xx_snapshot(struct adreno_device *adreno_dev,
 		struct kgsl_snapshot *snapshot);
-void a6xx_snapshot_gmu(struct adreno_device *adreno_dev,
-		struct kgsl_snapshot *snapshot);
-
 void a6xx_crashdump_init(struct adreno_device *adreno_dev);
 #endif

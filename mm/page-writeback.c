@@ -2066,7 +2066,7 @@ static int page_writeback_cpu_online(unsigned int cpu)
  * However, that was when we used "dirty_ratio" to scale with
  * all memory, and we don't do that any more. "dirty_ratio"
  * is now applied to total non-HIGHPAGE memory (by subtracting
- * totalhigh_pages() from vm_total_pages), and as such we can't
+ * totalhigh_pages from vm_total_pages), and as such we can't
  * get into the old insane situation any more where we had
  * large amounts of dirty pages compared to a small amount of
  * non-HIGHMEM memory.
@@ -2732,6 +2732,7 @@ int test_clear_page_writeback(struct page *page)
 	} else {
 		ret = TestClearPageWriteback(page);
 	}
+
 	/*
 	 * NOTE: Page might be free now! Writeback doesn't hold a page
 	 * reference on its own, it relies on truncation to wait for
@@ -2739,8 +2740,7 @@ int test_clear_page_writeback(struct page *page)
 	 * page state that is static across allocation cycles.
 	 */
 	if (ret) {
-		__mem_cgroup_update_page_stat(page, memcg,
-					      MEM_CGROUP_STAT_WRITEBACK, -1);
+		mem_cgroup_dec_stat(memcg, MEM_CGROUP_STAT_WRITEBACK);
 		dec_node_page_state(page, NR_WRITEBACK);
 		dec_zone_page_state(page, NR_ZONE_WRITE_PENDING);
 		inc_node_page_state(page, NR_WRITTEN);

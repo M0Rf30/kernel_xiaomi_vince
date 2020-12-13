@@ -40,6 +40,7 @@ typedef unsigned long mm_segment_t;
  */
 struct thread_info {
 	unsigned long		flags;		/* low level flags */
+	unsigned long		padding[7];
 	mm_segment_t		addr_limit;	/* address limit */
 #ifdef CONFIG_ARM64_SW_TTBR0_PAN
 	u64			ttbr0;		/* saved TTBR0_EL1 */
@@ -90,7 +91,7 @@ struct thread_info {
 #define TIF_RESTORE_SIGMASK	20
 #define TIF_SINGLESTEP		21
 #define TIF_32BIT		22	/* 32bit process */
-#define TIF_SSBD                23	/* Wants SSB mitigation */
+#define TIF_SSBD		23	/* Wants SSB mitigation */
 #define TIF_MM_RELEASED		24
 
 #define _TIF_SIGPENDING		(1 << TIF_SIGPENDING)

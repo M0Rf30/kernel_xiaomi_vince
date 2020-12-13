@@ -1962,4 +1962,3 @@ module_exit(msm_serial_exit);
 MODULE_AUTHOR("Robert Love <rlove@google.com>");
 MODULE_DESCRIPTION("Driver for msm7x serial device");
 MODULE_LICENSE("GPL");
-

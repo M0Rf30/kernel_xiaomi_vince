@@ -471,12 +471,14 @@ destroy_conntrack(struct nf_conntrack *nfct)
 	local_bh_disable();
 
 	pr_debug("freeing item in the SIP list\n");
-	list_for_each_safe(sip_node_list, sip_node_save_list,
-			   &ct->sip_segment_list) {
-		sip_node = list_entry(sip_node_list, struct sip_list, list);
-		list_del(&sip_node->list);
-		kfree(sip_node);
-	}
+	if (ct->sip_segment_list.next)
+		list_for_each_safe(sip_node_list, sip_node_save_list,
+				   &ct->sip_segment_list) {
+			sip_node = list_entry(sip_node_list,
+					      struct sip_list, list);
+			list_del(&sip_node->list);
+			kfree(sip_node);
+		}
 	/* Expectations will have been removed in clean_from_lists,
 	 * except TFTP can create an expectation on the first packet,
 	 * before connection is in the list, so we need to clean here,
@@ -1996,11 +1998,11 @@ int nf_conntrack_init_start(void)
 		 * >= 4GB machines have 65536 buckets.
 		 */
 		nf_conntrack_htable_size
-			= (((totalram_pages() << PAGE_SHIFT) / 16384)
+			= (((totalram_pages << PAGE_SHIFT) / 16384)
 			   / sizeof(struct hlist_head));
-		if (totalram_pages() > (4 * (1024 * 1024 * 1024 / PAGE_SIZE)))
+		if (totalram_pages > (4 * (1024 * 1024 * 1024 / PAGE_SIZE)))
 			nf_conntrack_htable_size = 65536;
-		else if (totalram_pages() > (1024 * 1024 * 1024 / PAGE_SIZE))
+		else if (totalram_pages > (1024 * 1024 * 1024 / PAGE_SIZE))
 			nf_conntrack_htable_size = 16384;
 		if (nf_conntrack_htable_size < 32)
 			nf_conntrack_htable_size = 32;

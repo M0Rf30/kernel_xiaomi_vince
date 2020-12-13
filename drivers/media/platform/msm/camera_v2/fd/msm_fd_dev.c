@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -21,7 +21,7 @@
 #include <linux/msm_ion.h>
 #include <media/v4l2-ioctl.h>
 #include <media/v4l2-event.h>
-#include <media/videobuf2-core.h>
+#include <media/videobuf2-v4l2.h>
 #include <linux/clk/msm-clk.h>
 
 #include "msm_fd_dev.h"
@@ -151,7 +151,7 @@ static int msm_fd_fill_format_from_index(struct v4l2_format *f, int index)
  */
 static int msm_fd_fill_format_from_ctx(struct v4l2_format *f, struct fd_ctx *c)
 {
-	if (NULL == c->format.size)
+	if (c->format.size == NULL)
 		return -EINVAL;
 
 	f->fmt.pix.width = c->format.size->width;
@@ -198,7 +198,7 @@ static int msm_fd_queue_setup(struct vb2_queue *q,
  * msm_fd_buf_init - vb2_ops buf_init callback.
  * @vb: Pointer to vb2 buffer struct.
  */
-int msm_fd_buf_init(struct vb2_buffer *vb)
+static int msm_fd_buf_init(struct vb2_buffer *vb)
 {
 	struct msm_fd_buffer *fd_buffer =
 		(struct msm_fd_buffer *)vb;
@@ -227,7 +227,6 @@ static void msm_fd_buf_queue(struct vb2_buffer *vb)
 	if (vb->vb2_queue->streaming)
 		msm_fd_hw_schedule_and_start(ctx->fd_device);
 
-	return;
 }
 
 /*
@@ -343,10 +342,9 @@ static int msm_fd_vbif_error_handler(void *handle, uint32_t error)
 	struct msm_fd_buffer *active_buf;
 	int ret;
 
-	if (NULL == handle) {
-		dev_err(fd->dev, "FD Ctx is null, Cannot recover\n");
+	if (handle == NULL)
 		return 0;
-	}
+
 	ctx = (struct fd_ctx *)handle;
 	fd = (struct msm_fd_device *)ctx->fd_device;
 
@@ -366,7 +364,9 @@ static int msm_fd_vbif_error_handler(void *handle, uint32_t error)
 		msm_fd_hw_get(fd, ctx->settings.speed);
 
 		/* Get active buffer */
+		MSM_FD_SPIN_LOCK(fd->slock, 1);
 		active_buf = msm_fd_hw_get_active_buffer(fd, 1);
+		MSM_FD_SPIN_UNLOCK(fd->slock, 1);
 
 		if (active_buf == NULL) {
 			dev_dbg(fd->dev, "no active buffer, return\n");
@@ -1089,7 +1089,7 @@ static int msm_fd_s_ctrl(struct file *file, void *fh, struct v4l2_control *a)
 }
 
 /*
- * msm_fd_cropcap - V4l2 ioctl crop capabilites.
+ * msm_fd_cropcap - V4l2 ioctl crop capabilities.
  * @file: Pointer to file struct.
  * @fh: V4l2 File handle.
  * @sub: Pointer to v4l2_cropcap struct need to be set.
@@ -1378,9 +1378,7 @@ static int fd_probe(struct platform_device *pdev)
 	}
 	fd->hw_revision = msm_fd_hw_get_revision(fd);
 
-	/* Reset HW and don't wait for complete in probe */
 	msm_fd_hw_put(fd);
-	fd->init = true;
 
 	ret = msm_fd_hw_request_irq(pdev, fd, msm_fd_wq_handler);
 	if (ret < 0) {
@@ -1444,7 +1442,7 @@ static int fd_device_remove(struct platform_device *pdev)
 	struct msm_fd_device *fd;
 
 	fd = platform_get_drvdata(pdev);
-	if (NULL == fd) {
+	if (fd == NULL) {
 		dev_err(&pdev->dev, "Can not get fd drvdata\n");
 		return 0;
 	}
@@ -1475,6 +1473,7 @@ static struct platform_driver fd_driver = {
 		.name = MSM_FD_DRV_NAME,
 		.owner = THIS_MODULE,
 		.of_match_table = msm_fd_dt_match,
+		.suppress_bind_attrs = true,
 	},
 };
 

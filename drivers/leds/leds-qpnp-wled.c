@@ -443,8 +443,6 @@ module_param_named(
 	step_delay_gain, qpnp_wled_step_delay_gain, int, 0600
 );
 
-static int first_set_prev_state = 0;
-
 /* helper to read a pmic register */
 static int qpnp_wled_read_reg(struct qpnp_wled *wled, u16 addr, u8 *data)
 {
@@ -1146,10 +1144,6 @@ static void qpnp_wled_work(struct work_struct *work)
 		}
 	}
 
-	if (1 == first_set_prev_state) {
-		wled->prev_state = true;
-		first_set_prev_state = 0;
-	}
 	if (!!level != wled->prev_state) {
 		if (!!level) {
 			/*
@@ -2096,22 +2090,26 @@ static int qpnp_wled_config(struct qpnp_wled *wled)
 		return rc;
 
 	/* Configure the HYBRID THRESHOLD register */
-	if (wled->hyb_thres < QPNP_WLED_HYB_THRES_MIN)
-		wled->hyb_thres = QPNP_WLED_HYB_THRES_MIN;
-	else if (wled->hyb_thres > QPNP_WLED_HYB_THRES_MAX)
-		wled->hyb_thres = QPNP_WLED_HYB_THRES_MAX;
+	if (wled->dim_mode == QPNP_WLED_DIM_HYBRID) {
+		if (wled->hyb_thres < QPNP_WLED_HYB_THRES_MIN)
+			wled->hyb_thres = QPNP_WLED_HYB_THRES_MIN;
+		else if (wled->hyb_thres > QPNP_WLED_HYB_THRES_MAX)
+			wled->hyb_thres = QPNP_WLED_HYB_THRES_MAX;
 
-	rc = qpnp_wled_read_reg(wled, QPNP_WLED_HYB_THRES_REG(wled->sink_base),
-			&reg);
-	if (rc < 0)
-		return rc;
-	reg &= QPNP_WLED_HYB_THRES_MASK;
-	temp = fls(wled->hyb_thres / QPNP_WLED_HYB_THRES_MIN) - 1;
-	reg |= temp;
-	rc = qpnp_wled_write_reg(wled, QPNP_WLED_HYB_THRES_REG(wled->sink_base),
-			reg);
-	if (rc)
-		return rc;
+		rc = qpnp_wled_read_reg(wled,
+				QPNP_WLED_HYB_THRES_REG(wled->sink_base),
+				&reg);
+		if (rc < 0)
+			return rc;
+		reg &= QPNP_WLED_HYB_THRES_MASK;
+		temp = fls(wled->hyb_thres / QPNP_WLED_HYB_THRES_MIN) - 1;
+		reg |= temp;
+		rc = qpnp_wled_write_reg(wled,
+				QPNP_WLED_HYB_THRES_REG(wled->sink_base),
+				reg);
+		if (rc)
+			return rc;
+	}
 
 	/* Configure TEST5 register */
 	if (wled->dim_mode == QPNP_WLED_DIM_DIGITAL) {
@@ -2648,9 +2646,10 @@ static int qpnp_wled_parse_dt(struct qpnp_wled *wled)
 	else
 		wled->max_strings = QPNP_WLED_MAX_STRINGS;
 
+	temp_val = 0;
 	prop = of_find_property(pdev->dev.of_node,
 			"qcom,led-strings-list", &temp_val);
-	if (!prop || !temp_val || temp_val > QPNP_WLED_MAX_STRINGS) {
+	if (!prop || temp_val > QPNP_WLED_MAX_STRINGS) {
 		dev_err(&pdev->dev, "Invalid strings info, use default");
 		wled->num_strings = wled->max_strings;
 		for (i = 0; i < wled->num_strings; i++)
@@ -2760,11 +2759,6 @@ static int qpnp_wled_probe(struct platform_device *pdev)
 		return rc;
 	}
 
-	if (strnstr(saved_command_line, "androidboot.mode=ffbm-01",
-		    strlen(saved_command_line))) {
-		printk("linson in ffbm mode\n");
-		first_set_prev_state = 1;
-	}
 	INIT_WORK(&wled->work, qpnp_wled_work);
 	wled->ramp_ms = QPNP_WLED_RAMP_DLY_MS;
 	wled->ramp_step = 1;

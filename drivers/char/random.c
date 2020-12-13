@@ -893,6 +893,7 @@ static void crng_reseed(struct crng_state *crng, struct entropy_store *r)
 	if (crng == &primary_crng && crng_init < 2) {
 		numa_crng_init();
 		crng_init = 2;
+		spin_unlock_irqrestore(&crng->lock, flags);
 		process_random_ready_list();
 		wake_up_interruptible(&crng_init_wait);
 		pr_notice("random: crng init done\n");
@@ -908,8 +909,9 @@ static void crng_reseed(struct crng_state *crng, struct entropy_store *r)
 				  urandom_warning.missed);
 			urandom_warning.missed = 0;
 		}
+	} else {
+		spin_unlock_irqrestore(&crng->lock, flags);
 	}
-	spin_unlock_irqrestore(&crng->lock, flags);
 }
 
 static inline void maybe_reseed_primary_crng(void)
@@ -1210,7 +1212,6 @@ void add_interrupt_randomness(int irq, int irq_flags)
 
 	fast_mix(fast_pool);
 	add_interrupt_bench(cycles);
-	this_cpu_add(net_rand_state.s1, fast_pool->pool[cycles & 3]);
 
 	if (unlikely(crng_init == 0)) {
 		if ((fast_pool->count >= 64) &&

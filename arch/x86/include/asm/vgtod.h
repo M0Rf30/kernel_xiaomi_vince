@@ -89,6 +89,8 @@ static inline unsigned int __getcpu(void)
 	 * works on all CPUs.  This is volatile so that it orders
 	 * correctly wrt barrier() and to keep gcc from cleverly
 	 * hoisting it out of the calling function.
+	 *
+	 * If RDPID is available, use it.
 	 */
 	alternative_io ("lsl %[seg],%[p]",
 			".byte 0xf3,0x0f,0xc7,0xf8", /* RDPID %eax/rax */

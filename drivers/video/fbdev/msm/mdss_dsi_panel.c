@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -35,13 +35,6 @@
 
 #define VSYNC_DELAY msecs_to_jiffies(17)
 
-/* test - start */
-extern char panel_name[MDSS_MAX_PANEL_LEN];
-extern struct mdss_dsi_ctrl_pdata *change_par_ctrl ;
-int change_par_buf;
-
-int LCM_effect[4] = {0x2,0xf0,0xf00,0xf000};
-
 DEFINE_LED_TRIGGER(bl_led_trigger);
 
 void mdss_dsi_panel_pwm_cfg(struct mdss_dsi_ctrl_pdata *ctrl)
@@ -53,6 +46,7 @@ void mdss_dsi_panel_pwm_cfg(struct mdss_dsi_ctrl_pdata *ctrl)
 	if (ctrl->pwm_bl == NULL || IS_ERR(ctrl->pwm_bl)) {
 		pr_err("%s: Error: lpg_chan=%d pwm request failed",
 				__func__, ctrl->pwm_lpg_chan);
+		ctrl->pwm_bl = NULL;
 	}
 	ctrl->pwm_enabled = 0;
 }
@@ -190,7 +184,7 @@ static void mdss_dsi_panel_apply_settings(struct mdss_dsi_ctrl_pdata *ctrl,
 	mdss_dsi_cmdlist_put(ctrl, &cmdreq);
 }
 
-void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
+static void mdss_dsi_panel_cmds_send(struct mdss_dsi_ctrl_pdata *ctrl,
 			struct dsi_panel_cmds *pcmds, u32 flags)
 {
 	struct dcs_cmd_req cmdreq;
@@ -367,8 +361,6 @@ disp_en_gpio_err:
 	return rc;
 }
 
-extern bool pullDownReset;
-
 int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 {
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
@@ -431,6 +423,11 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 		pr_debug("%s:%d, reset line not configured\n",
 			   __func__, __LINE__);
 		return rc;
+	}
+
+	if (pinfo->skip_panel_reset && !pinfo->cont_splash_enabled) {
+		pr_debug("%s: skip_panel_reset is set\n", __func__);
+		return 0;
 	}
 
 	pr_debug("%s: enable = %d\n", __func__, enable);
@@ -525,10 +522,7 @@ int mdss_dsi_panel_reset(struct mdss_panel_data *pdata, int enable)
 			usleep_range(100, 110);
 			gpio_free(ctrl_pdata->disp_en_gpio);
 		}
-		if (pullDownReset) {
-			pr_err("%s: pull down reset pin\n", __func__);
-			gpio_set_value((ctrl_pdata->rst_gpio), 0);
-		}
+		gpio_set_value((ctrl_pdata->rst_gpio), 0);
 		gpio_free(ctrl_pdata->rst_gpio);
 		if (gpio_is_valid(ctrl_pdata->mode_gpio))
 			gpio_free(ctrl_pdata->mode_gpio);
@@ -583,11 +577,13 @@ static int mdss_dsi_roi_merge(struct mdss_dsi_ctrl_pdata *ctrl,
 	return ans;
 }
 
+static char pageset[] = {0xfe, 0x00};			/* DTYPE_DCS_WRITE1 */
 static char caset[] = {0x2a, 0x00, 0x00, 0x03, 0x00};	/* DTYPE_DCS_LWRITE */
 static char paset[] = {0x2b, 0x00, 0x00, 0x05, 0x00};	/* DTYPE_DCS_LWRITE */
 
 /* pack into one frame before sent */
 static struct dsi_cmd_desc set_col_page_addr_cmd[] = {
+	{{DTYPE_DCS_WRITE1, 1, 0, 0, 0, sizeof(pageset)}, pageset},
 	{{DTYPE_DCS_LWRITE, 0, 0, 0, 1, sizeof(caset)}, caset},	/* packed */
 	{{DTYPE_DCS_LWRITE, 1, 0, 0, 1, sizeof(paset)}, paset},
 };
@@ -597,20 +593,22 @@ static void mdss_dsi_send_col_page_addr(struct mdss_dsi_ctrl_pdata *ctrl,
 {
 	struct dcs_cmd_req cmdreq;
 
+	set_col_page_addr_cmd[0].payload = pageset;
+
 	caset[1] = (((roi->x) & 0xFF00) >> 8);
 	caset[2] = (((roi->x) & 0xFF));
 	caset[3] = (((roi->x - 1 + roi->w) & 0xFF00) >> 8);
 	caset[4] = (((roi->x - 1 + roi->w) & 0xFF));
-	set_col_page_addr_cmd[0].payload = caset;
+	set_col_page_addr_cmd[1].payload = caset;
 
 	paset[1] = (((roi->y) & 0xFF00) >> 8);
 	paset[2] = (((roi->y) & 0xFF));
 	paset[3] = (((roi->y - 1 + roi->h) & 0xFF00) >> 8);
 	paset[4] = (((roi->y - 1 + roi->h) & 0xFF));
-	set_col_page_addr_cmd[1].payload = paset;
+	set_col_page_addr_cmd[2].payload = paset;
 
 	memset(&cmdreq, 0, sizeof(cmdreq));
-	cmdreq.cmds_cnt = 2;
+	cmdreq.cmds_cnt = 3;
 	cmdreq.flags = CMD_REQ_COMMIT;
 	if (unicast)
 		cmdreq.flags |= CMD_REQ_UNICAST;
@@ -673,6 +671,12 @@ static int mdss_dsi_set_col_page_addr(struct mdss_panel_data *pdata,
 						__func__, ctrl->ndx);
 			return 0;
 		}
+
+		if (pinfo->partial_update_col_addr_offset)
+			roi.x += pinfo->partial_update_col_addr_offset;
+
+		if (pinfo->partial_update_row_addr_offset)
+			roi.y += pinfo->partial_update_row_addr_offset;
 
 		if (pinfo->dcs_cmd_by_left) {
 			if (left_or_both && ctrl->ndx == DSI_CTRL_RIGHT) {
@@ -904,26 +908,6 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 	struct dsi_panel_cmds *on_cmds;
 	int ret = 0;
 
-
-	struct dsi_panel_cmds *CABC_on_cmds_point;
-	struct dsi_panel_cmds *CABC_off_cmds_point;
-	struct dsi_panel_cmds *CE_on_cmds_point;
-	struct dsi_panel_cmds *CE_off_cmds_point;
-	struct dsi_panel_cmds *cold_gamma_cmds_point;
-	struct dsi_panel_cmds *warm_gamma_cmds_point;
-	struct dsi_panel_cmds *default_gamma_cmds_point;
-	struct dsi_panel_cmds *white_gamma_cmds_point;
-	struct dsi_panel_cmds *PM1_cmds_point;
-	struct dsi_panel_cmds *PM2_cmds_point;
-	struct dsi_panel_cmds *PM3_cmds_point;
-	struct dsi_panel_cmds *PM4_cmds_point;
-	struct dsi_panel_cmds *PM5_cmds_point;
-	struct dsi_panel_cmds *PM6_cmds_point;
-	struct dsi_panel_cmds *PM7_cmds_point;
-	struct dsi_panel_cmds *PM8_cmds_point;
-	struct dsi_panel_cmds *sRGB_on_cmds_point;
-	struct dsi_panel_cmds *sRGB_off_cmds_point;
-
 	if (pdata == NULL) {
 		pr_err("%s: Invalid input data\n", __func__);
 		return -EINVAL;
@@ -951,121 +935,6 @@ static int mdss_dsi_panel_on(struct mdss_panel_data *pdata)
 
 	if (on_cmds->cmd_cnt)
 		mdss_dsi_panel_cmds_send(ctrl, on_cmds, CMD_REQ_COMMIT);
-
-
-	if (!change_par_ctrl){
-		pr_err("%s: change_par_ctrl is NULL, change lcm effect failed\n",__func__);
-		return 0;
-	}
-	CABC_on_cmds_point = &change_par_ctrl->CABC_on_cmds;
-	CABC_off_cmds_point = &change_par_ctrl->CABC_off_cmds;
-	CE_on_cmds_point = &change_par_ctrl->CE_on_cmds;
-	CE_off_cmds_point = &change_par_ctrl->CE_off_cmds;
-	cold_gamma_cmds_point = &change_par_ctrl->cold_gamma_cmds;
-	warm_gamma_cmds_point = &change_par_ctrl->warm_gamma_cmds;
-	default_gamma_cmds_point = &change_par_ctrl->default_gamma_cmds;
-	white_gamma_cmds_point = &change_par_ctrl->white_gamma_cmds;
-	PM1_cmds_point = &change_par_ctrl->PM1_cmds;
-	PM2_cmds_point = &change_par_ctrl->PM2_cmds;
-	PM3_cmds_point = &change_par_ctrl->PM3_cmds;
-	PM4_cmds_point = &change_par_ctrl->PM4_cmds;
-	PM5_cmds_point = &change_par_ctrl->PM5_cmds;
-	PM6_cmds_point = &change_par_ctrl->PM6_cmds;
-	PM7_cmds_point = &change_par_ctrl->PM7_cmds;
-	PM8_cmds_point = &change_par_ctrl->PM8_cmds;
-	sRGB_on_cmds_point = &change_par_ctrl->sRGB_on_cmds;
-	sRGB_off_cmds_point = &change_par_ctrl->sRGB_off_cmds;
-	printk("lcm %s  send effect cmds\n", __func__);
-	switch(LCM_effect[0]){
-		case 0x0001:
-			mdss_dsi_panel_cmds_send(change_par_ctrl, warm_gamma_cmds_point, CMD_REQ_COMMIT);
-			break;
-		case 0x0002:
-			mdss_dsi_panel_cmds_send(change_par_ctrl, default_gamma_cmds_point, CMD_REQ_COMMIT);
-			break;
-		case 0x0003:
-			mdss_dsi_panel_cmds_send(change_par_ctrl, cold_gamma_cmds_point, CMD_REQ_COMMIT);
-			break;
-		case 0x0004:
-			mdss_dsi_panel_cmds_send(change_par_ctrl, white_gamma_cmds_point, CMD_REQ_COMMIT);
-			break;
-		case 0x0006:
-			mdss_dsi_panel_cmds_send(change_par_ctrl, PM1_cmds_point, CMD_REQ_COMMIT); break;
-		case 0x0007:
-			mdss_dsi_panel_cmds_send(change_par_ctrl, PM2_cmds_point, CMD_REQ_COMMIT); break;
-		case 0x0008:
-			mdss_dsi_panel_cmds_send(change_par_ctrl, PM3_cmds_point, CMD_REQ_COMMIT); break;
-		case 0x0009:
-			mdss_dsi_panel_cmds_send(change_par_ctrl, PM4_cmds_point, CMD_REQ_COMMIT); break;
-		case 0x000a:
-			mdss_dsi_panel_cmds_send(change_par_ctrl, PM5_cmds_point, CMD_REQ_COMMIT); break;
-		case 0x000b:
-			mdss_dsi_panel_cmds_send(change_par_ctrl, PM6_cmds_point, CMD_REQ_COMMIT); break;
-		case 0x000c:
-			mdss_dsi_panel_cmds_send(change_par_ctrl, PM7_cmds_point, CMD_REQ_COMMIT); break;
-		case 0x0005:
-			mdss_dsi_panel_cmds_send(change_par_ctrl, PM8_cmds_point, CMD_REQ_COMMIT); break;
-	}
-	if (LCM_effect[1] == 0x0010){
-		switch(LCM_effect[3]){
-			case 0x1000:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, sRGB_on_cmds_point, CMD_REQ_COMMIT); break;
-			case 0xf000:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, sRGB_off_cmds_point, CMD_REQ_COMMIT); break;
-		}
-		switch(LCM_effect[1]){
-			case 0x0010:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, CE_on_cmds_point, CMD_REQ_COMMIT); break;
-			case 0x00f0:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, CE_off_cmds_point, CMD_REQ_COMMIT); break;
-		}
-		switch(LCM_effect[2]){
-			case 0x0100:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, CABC_on_cmds_point, CMD_REQ_COMMIT); break;
-			case 0x0f00:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, CABC_off_cmds_point, CMD_REQ_COMMIT); break;
-		}
-	}
-	else if (LCM_effect[3] == 0x1000){
-		switch(LCM_effect[1]){
-			case 0x0010:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, CE_on_cmds_point, CMD_REQ_COMMIT); break;
-			case 0x00f0:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, CE_off_cmds_point, CMD_REQ_COMMIT); break;
-		}
-		switch(LCM_effect[2]){
-			case 0x0100:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, CABC_on_cmds_point, CMD_REQ_COMMIT); break;
-			case 0x0f00:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, CABC_off_cmds_point, CMD_REQ_COMMIT); break;
-		}
-		switch(LCM_effect[3]){
-			case 0x1000:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, sRGB_on_cmds_point, CMD_REQ_COMMIT); break;
-			case 0xf000:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, sRGB_off_cmds_point, CMD_REQ_COMMIT); break;
-		}
-	}
-	else{
-		switch(LCM_effect[1]){
-			case 0x0010:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, CE_on_cmds_point, CMD_REQ_COMMIT); break;
-			case 0x00f0:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, CE_off_cmds_point, CMD_REQ_COMMIT); break;
-		}
-		switch(LCM_effect[2]){
-			case 0x0100:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, CABC_on_cmds_point, CMD_REQ_COMMIT); break;
-			case 0x0f00:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, CABC_off_cmds_point, CMD_REQ_COMMIT); break;
-		}
-		switch(LCM_effect[3]){
-			case 0x1000:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, sRGB_on_cmds_point, CMD_REQ_COMMIT); break;
-			case 0xf000:
-				mdss_dsi_panel_cmds_send(change_par_ctrl, sRGB_off_cmds_point, CMD_REQ_COMMIT); break;
-		}
-	}
 
 	if (pinfo->compression_mode == COMPRESSION_DSC)
 		mdss_dsi_panel_dsc_pps_send(ctrl, pinfo);
@@ -1112,8 +981,6 @@ static int mdss_dsi_post_panel_on(struct mdss_panel_data *pdata)
 
 	ctrl = container_of(pdata, struct mdss_dsi_ctrl_pdata,
 				panel_data);
-
-	change_par_ctrl = ctrl;
 
 	pr_debug("%s: ctrl=%pK ndx=%d\n", __func__, ctrl, ctrl->ndx);
 
@@ -2157,8 +2024,6 @@ static void mdss_dsi_parse_esd_params(struct device_node *np,
 			ctrl->status_mode = ESD_REG;
 			ctrl->check_read_status =
 				mdss_dsi_gen_read_status;
-		} else if (!strcmp(string, "TE_check_NT35596")) {
-			ctrl->status_mode = ESD_TE_NT35596;
 		} else if (!strcmp(string, "reg_read_nt35596")) {
 			ctrl->status_mode = ESD_REG_NT35596;
 			ctrl->status_error_count = 0;
@@ -2250,6 +2115,7 @@ error:
 static int mdss_dsi_parse_panel_features(struct device_node *np,
 	struct mdss_dsi_ctrl_pdata *ctrl)
 {
+	u32 value[2];
 	struct mdss_panel_info *pinfo;
 
 	if (!np || !ctrl) {
@@ -2267,6 +2133,14 @@ static int mdss_dsi_parse_panel_features(struct device_node *np,
 					pinfo->partial_update_enabled);
 		ctrl->set_col_page_addr = mdss_dsi_set_col_page_addr;
 		if (pinfo->partial_update_enabled) {
+			int rc = of_property_read_u32_array(np,
+				"qcom,partial-update-addr-offset",
+				value, 2);
+			pinfo->partial_update_col_addr_offset =
+				(!rc ? value[0] : 0);
+			pinfo->partial_update_row_addr_offset =
+				(!rc ? value[1] : 0);
+
 			pinfo->partial_update_roi_merge =
 					of_property_read_bool(np,
 					"qcom,partial-update-roi-merge");
@@ -2697,31 +2571,18 @@ static int mdss_dsi_panel_timing_from_dt(struct device_node *np,
 	return 0;
 }
 
-extern int white_point_num;
-
 static int  mdss_dsi_panel_config_res_properties(struct device_node *np,
 		struct dsi_panel_timing *pt,
 		struct mdss_panel_data *panel_data,
 		bool default_timing)
 {
 	int rc = 0;
-	unsigned char dsi_on_num[3] = "";
-	unsigned char dsi_on_str[27] = "qcom,mdss-dsi-on-command-";
 
 	mdss_dsi_parse_roi_alignment(np, pt);
 
-	sprintf(dsi_on_num, "%02d", white_point_num);
-	strcat(dsi_on_str, dsi_on_num);
-	strcat(dsi_on_str, "\0");
-	if (white_point_num){
-		pr_err("[white point calibration] dsi_on_command = %s", dsi_on_str);
-		mdss_dsi_parse_dcs_cmds(np, &pt->on_cmds,
-			dsi_on_str, "qcom,mdss-dsi-on-command-state");
-	}else{
-		mdss_dsi_parse_dcs_cmds(np, &pt->on_cmds,
-			"qcom,mdss-dsi-on-command",
-			"qcom,mdss-dsi-on-command-state");
-	}
+	mdss_dsi_parse_dcs_cmds(np, &pt->on_cmds,
+		"qcom,mdss-dsi-on-command",
+		"qcom,mdss-dsi-on-command-state");
 
 	mdss_dsi_parse_dcs_cmds(np, &pt->post_panel_on_cmds,
 		"qcom,mdss-dsi-post-panel-on-command", NULL);
@@ -2863,9 +2724,6 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	const char *data;
 	static const char *pdest;
 	struct mdss_panel_info *pinfo = &(ctrl_pdata->panel_data.panel_info);
-
-			unsigned char dsi_white_num[3] = "";
-			unsigned char dsi_white_str[26] = "qcom,mdss-white-command-";
 
 	if (mdss_dsi_is_hw_config_split(ctrl_pdata->shared_data))
 		pinfo->is_split_display = true;
@@ -3069,51 +2927,6 @@ static int mdss_panel_parse_dt(struct device_node *np,
 	mdss_dsi_parse_reset_seq(np, pinfo->rst_seq, &(pinfo->rst_seq_len),
 		"qcom,mdss-dsi-reset-sequence");
 
-
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->CABC_on_cmds,
-		"qcom,mdss-dsi-CABC_on-command", "qcom,mdss-dsi-CABC_on-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->CABC_off_cmds,
-		"qcom,mdss-dsi-CABC_off-command", "qcom,mdss-dsi-CABC_off-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->CE_on_cmds,
-		"qcom,mdss-dsi-CE_on-command", "qcom,mdss-dsi-CE_on-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->CE_off_cmds,
-		"qcom,mdss-dsi-CE_off-command", "qcom,mdss-dsi-CE_off-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->cold_gamma_cmds,
-		"qcom,mdss-dsi-cold_gamma-command", "qcom,mdss-dsi-cold_gamma-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->warm_gamma_cmds,
-		"qcom,mdss-dsi-warm_gamma-command", "qcom,mdss-dsi-warm_gamma-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->default_gamma_cmds,
-		"qcom,mdss-dsi-default_gamma-command", "qcom,mdss-dsi-default_gamma-command-state");
-	sprintf(dsi_white_num, "%02d", white_point_num);
-	strcat(dsi_white_str, dsi_white_num);
-	strcat(dsi_white_str, "\0");
-	printk("sxf white_point_num = %d\n",white_point_num);
-	printk("[white point calibration] sxf dsi_white_command = %s", dsi_white_str);
-		mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->white_gamma_cmds,
-			dsi_white_str, "qcom,mdss-white-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->sRGB_on_cmds,
-		"qcom,mdss-dsi-sRGB_on-command", "qcom,mdss-dsi-sRGB_on-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->sRGB_off_cmds,
-		"qcom,mdss-dsi-sRGB_off-command", "qcom,mdss-dsi-sRGB_off-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->PM1_cmds,
-		"qcom,mdss-dsi-PM1-command", "qcom,mdss-dsi-PM1-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->PM2_cmds,
-		"qcom,mdss-dsi-PM2-command", "qcom,mdss-dsi-PM2-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->PM3_cmds,
-		"qcom,mdss-dsi-PM3-command", "qcom,mdss-dsi-PM3-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->PM4_cmds,
-		"qcom,mdss-dsi-PM4-command", "qcom,mdss-dsi-PM4-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->PM5_cmds,
-		"qcom,mdss-dsi-PM5-command", "qcom,mdss-dsi-PM5-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->PM6_cmds,
-		"qcom,mdss-dsi-PM6-command", "qcom,mdss-dsi-PM6-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->PM7_cmds,
-		"qcom,mdss-dsi-PM7-command", "qcom,mdss-dsi-PM7-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->PM8_cmds,
-		"qcom,mdss-dsi-PM8-command", "qcom,mdss-dsi-PM8-command-state");
-	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->off_cmds,
-		"qcom,mdss-dsi-off-command", "qcom,mdss-dsi-off-command-state");
-
 	mdss_dsi_parse_dcs_cmds(np, &ctrl_pdata->off_cmds,
 		"qcom,mdss-dsi-off-command", "qcom,mdss-dsi-off-command-state");
 
@@ -3133,6 +2946,9 @@ static int mdss_panel_parse_dt(struct device_node *np,
 
 	pinfo->mipi.force_clk_lane_hs = of_property_read_bool(np,
 		"qcom,mdss-dsi-force-clock-lane-hs");
+
+	pinfo->skip_panel_reset =
+		of_property_read_bool(np, "qcom,mdss-skip-panel-reset");
 
 	rc = mdss_dsi_parse_panel_features(np, ctrl_pdata);
 	if (rc) {

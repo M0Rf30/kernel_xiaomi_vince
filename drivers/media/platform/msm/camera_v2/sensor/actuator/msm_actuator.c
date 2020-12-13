@@ -1,5 +1,4 @@
-/* Copyright (c) 2011-2018, The Linux Foundation. All rights reserved.
- * Copyright (C) 2018 XiaoMi, Inc.
+/* Copyright (c) 2011-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -601,10 +600,6 @@ static int32_t msm_actuator_move_focus(
 		a_ctrl->step_position_table[a_ctrl->curr_step_pos])))
 		return rc;
 
-	if (a_ctrl->step_position_table[dest_step_pos] ==
-	a_ctrl->step_position_table[a_ctrl->curr_step_pos])
-		return rc;
-
 	if ((sign_dir > MSM_ACTUATOR_MOVE_SIGNED_NEAR) ||
 		(sign_dir < MSM_ACTUATOR_MOVE_SIGNED_FAR)) {
 		pr_err("Invalid sign_dir = %d\n", sign_dir);
@@ -652,9 +647,6 @@ static int32_t msm_actuator_move_focus(
 		a_ctrl->curr_step_pos, dest_step_pos, curr_lens_pos);
 
 	while (a_ctrl->curr_step_pos != dest_step_pos) {
-		if (a_ctrl->curr_region_index >= a_ctrl->region_size) {
-			break;
-		}
 		step_boundary =
 			a_ctrl->region_params[a_ctrl->curr_region_index].
 			step_bound[dir];
@@ -779,9 +771,6 @@ static int32_t msm_actuator_bivcm_move_focus(
 		a_ctrl->curr_step_pos, dest_step_pos, curr_lens_pos);
 
 	while (a_ctrl->curr_step_pos != dest_step_pos) {
-		if (a_ctrl->curr_region_index >= a_ctrl->region_size) {
-			break;
-		}
 		step_boundary =
 			a_ctrl->region_params[a_ctrl->curr_region_index].
 			step_bound[dir];
@@ -1843,7 +1832,7 @@ static int32_t msm_actuator_power_up(struct msm_actuator_ctrl_t *a_ctrl)
 	}
 
 	/* VREG needs some delay to power up */
-	usleep_range(12000, 14000);
+	usleep_range(2000, 3000);
 	a_ctrl->actuator_state = ACT_ENABLE_STATE;
 
 	CDBG("Exit\n");
@@ -1931,7 +1920,7 @@ static int32_t msm_actuator_i2c_probe(struct i2c_client *client,
 	act_ctrl_t->msm_sd.sd.internal_ops = &msm_actuator_internal_ops;
 	act_ctrl_t->msm_sd.sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	media_entity_pads_init(&act_ctrl_t->msm_sd.sd.entity, 0, NULL);
-	act_ctrl_t->msm_sd.sd.entity.group_id = MSM_CAMERA_SUBDEV_ACTUATOR;
+	act_ctrl_t->msm_sd.sd.entity.function = MSM_CAMERA_SUBDEV_ACTUATOR;
 	act_ctrl_t->msm_sd.close_seq = MSM_SD_CLOSE_2ND_CATEGORY | 0x2;
 	msm_sd_register(&act_ctrl_t->msm_sd);
 	msm_cam_copy_v4l2_subdev_fops(&msm_actuator_v4l2_subdev_fops);
@@ -2043,7 +2032,7 @@ static int32_t msm_actuator_platform_probe(struct platform_device *pdev)
 	snprintf(msm_actuator_t->msm_sd.sd.name,
 		ARRAY_SIZE(msm_actuator_t->msm_sd.sd.name), "msm_actuator");
 	media_entity_pads_init(&msm_actuator_t->msm_sd.sd.entity, 0, NULL);
-	msm_actuator_t->msm_sd.sd.entity.group_id = MSM_CAMERA_SUBDEV_ACTUATOR;
+	msm_actuator_t->msm_sd.sd.entity.function = MSM_CAMERA_SUBDEV_ACTUATOR;
 	msm_actuator_t->msm_sd.close_seq = MSM_SD_CLOSE_2ND_CATEGORY | 0x2;
 	msm_sd_register(&msm_actuator_t->msm_sd);
 	msm_actuator_t->actuator_state = ACT_DISABLE_STATE;

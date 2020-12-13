@@ -10,7 +10,7 @@ endif
 ifeq ($(KERNEL_BUILD), 1)
 	# These are configurable via Kconfig for kernel-based builds
 	# Need to explicitly configure for Android-based builds
-	AUDIO_BLD_DIR := $(ANDROID_BUILD_TOP)/kernel/msm-4.9
+	AUDIO_BLD_DIR := $(shell pwd)/kernel/msm-4.9
 	AUDIO_ROOT := $(AUDIO_BLD_DIR)/techpack/audio
 endif
 
@@ -41,9 +41,16 @@ ifeq ($(KERNEL_BUILD), 0)
 		INCS    +=  -include $(AUDIO_ROOT)/config/sdxpoorwillsautoconf.h
 	endif
 	ifeq ($(CONFIG_ARCH_MSM8909), y)
-		include $(AUDIO_ROOT)/config/msm8909auto.conf
-		export
-		INCS    +=  -include $(AUDIO_ROOT)/config/msm8909autoconf.h
+		ifeq ($(CONFIG_MSM_BGCOM), y)
+			include $(AUDIO_ROOT)/config/msm8909auto.conf
+			export
+			INCS    +=  -include $(AUDIO_ROOT)/config/msm8909autoconf.h
+		endif
+		ifeq ($(CONFIG_MSM_8905), m)
+			include $(AUDIO_ROOT)/config/msm8905auto.conf
+			export
+			INCS    +=  -include $(AUDIO_ROOT)/config/msm8905autoconf.h
+		endif
 	endif
 	ifeq ($(CONFIG_ARCH_MSM8917), y)
 		include $(AUDIO_ROOT)/config/sdm450auto.conf
@@ -119,6 +126,11 @@ ifdef CONFIG_SND_SOC_MSM8909
 	MACHINE_INT_OBJS += msm8952.o
 endif
 
+# For MSM8909 only add voice svc driver
+ifdef CONFIG_SND_SOC_MSM8909
+	PLATFORM_OBJS += voice_svc.o
+endif
+
 # for SDM450 external codec sound card driver
 ifdef CONFIG_SND_SOC_EXT_CODEC_SDM450
 	MACHINE_EXT_OBJS += msm8952-slimbus.o
@@ -128,6 +140,10 @@ endif
 # for MSM8909 sound card driver
 ifdef CONFIG_SND_SOC_BG_8909
 	MACHINE_OBJS += msm_bg.o
+endif
+
+ifdef CONFIG_SND_SOC_8909_DIG_CDC
+	MACHINE_DIGCDC_OBJS += msm8909.o
 endif
 
 ifdef CONFIG_SND_SOC_CPE
@@ -167,6 +183,7 @@ ifdef CONFIG_SND_HWDEP_ROUTING
 endif
 ifdef CONFIG_QTI_PP
 	PLATFORM_OBJS += msm-qti-pp-config.o
+	CFLAGS_msm-qti-pp-config.o += $(call cc-option, -Wframe-larger-than=2048)
 endif
 
 LINUX_INC +=	-Iinclude/linux
@@ -186,19 +203,6 @@ CDEFINES +=	-DANI_LITTLE_BYTE_ENDIAN \
 		-D__linux__
 
 KBUILD_CPPFLAGS += $(CDEFINES)
-
-# Currently, for versions of gcc which support it, the kernel Makefile
-# is disabling the maybe-uninitialized warning.  Re-enable it for the
-# AUDIO driver.  Note that we must use EXTRA_CFLAGS here so that it
-# will override the kernel settings.
-ifeq ($(call cc-option-yn, -Wmaybe-uninitialized),y)
-EXTRA_CFLAGS += -Wmaybe-uninitialized
-endif
-#EXTRA_CFLAGS += -Wmissing-prototypes
-
-ifeq ($(call cc-option-yn, -Wheader-guard),y)
-EXTRA_CFLAGS += -Wheader-guard
-endif
 
 ifeq ($(KERNEL_BUILD), 0)
 KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/audio-kernel/dsp/Module.symvers
@@ -229,6 +233,9 @@ machine_ext_dlkm-y := $(MACHINE_EXT_OBJS)
 obj-$(CONFIG_SND_SOC_BG_8909) += machine_dlkm.o
 machine_dlkm-y := $(MACHINE_OBJS)
 
+obj-$(CONFIG_SND_SOC_8909_DIG_CDC) += machine_digcdc_dlkm.o
+machine_digcdc_dlkm-y := $(MACHINE_DIGCDC_OBJS)
+
 obj-$(CONFIG_SND_SOC_MACHINE_SDM845) += machine_dlkm.o
 machine_dlkm-y := $(MACHINE_OBJS)
 
@@ -240,6 +247,3 @@ machine_dlkm-y := $(MACHINE_OBJS)
 
 obj-$(CONFIG_SND_SOC_CPE) += cpe_lsm_dlkm.o
 cpe_lsm_dlkm-y := $(CPE_LSM_OBJS)
-
-# inject some build related information
-DEFINES += -DBUILD_TIMESTAMP=\"$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')\"

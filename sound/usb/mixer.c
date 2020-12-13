@@ -83,6 +83,7 @@ struct mixer_build {
 	unsigned char *buffer;
 	unsigned int buflen;
 	DECLARE_BITMAP(unitbitmap, MAX_ID_ELEMS);
+	DECLARE_BITMAP(termbitmap, MAX_ID_ELEMS);
 	struct usb_audio_term oterm;
 	const struct usbmix_name_map *map;
 	const struct usbmix_selector_map *selector_map;
@@ -724,15 +725,24 @@ static int get_term_name(struct mixer_build *state, struct usb_audio_term *iterm
  * parse the source unit recursively until it reaches to a terminal
  * or a branched unit.
  */
-static int check_input_term(struct mixer_build *state, int id,
+static int __check_input_term(struct mixer_build *state, int id,
 			    struct usb_audio_term *term)
 {
 	int err;
 	void *p1;
+	unsigned char *hdr;
 
 	memset(term, 0, sizeof(*term));
-	while ((p1 = find_audio_control_unit(state, id)) != NULL) {
-		unsigned char *hdr = p1;
+	for (;;) {
+		/* a loop in the terminal chain? */
+		if (test_and_set_bit(id, state->termbitmap))
+			return -EINVAL;
+
+		p1 = find_audio_control_unit(state, id);
+		if (!p1)
+			break;
+
+		hdr = p1;
 		term->id = id;
 		switch (hdr[2]) {
 		case UAC_INPUT_TERMINAL:
@@ -747,7 +757,7 @@ static int check_input_term(struct mixer_build *state, int id,
 
 				/* call recursively to verify that the
 				 * referenced clock entity is valid */
-				err = check_input_term(state, d->bCSourceID, term);
+				err = __check_input_term(state, d->bCSourceID, term);
 				if (err < 0)
 					return err;
 
@@ -762,7 +772,7 @@ static int check_input_term(struct mixer_build *state, int id,
 			} else { /* UAC_VERSION_3 */
 				struct uac3_input_terminal_descriptor *d = p1;
 
-				err = check_input_term(state,
+				err = __check_input_term(state,
 							d->bCSourceID, term);
 				if (err < 0)
 					return err;
@@ -820,7 +830,7 @@ static int check_input_term(struct mixer_build *state, int id,
 			} else {
 				struct uac_selector_unit_descriptor *d = p1;
 				/* call recursively to retrieve channel info */
-				err = check_input_term(state,
+				err = __check_input_term(state,
 							d->baSourceID[0], term);
 				if (err < 0)
 					return err;
@@ -882,6 +892,15 @@ static int check_input_term(struct mixer_build *state, int id,
 		}
 	}
 	return -ENODEV;
+}
+
+
+static int check_input_term(struct mixer_build *state, int id,
+			    struct usb_audio_term *term)
+{
+	memset(term, 0, sizeof(*term));
+	memset(state->termbitmap, 0, sizeof(state->termbitmap));
+	return __check_input_term(state, id, term);
 }
 
 /*
@@ -1033,6 +1052,14 @@ static void volume_control_quirks(struct usb_mixer_elem_info *cval,
 			cval->res = 384;
 		}
 		break;
+	case USB_ID(0x0495, 0x3042): /* ESS Technology Asus USB DAC */
+		if ((strstr(kctl->id.name, "Playback Volume") != NULL) ||
+			strstr(kctl->id.name, "Capture Volume") != NULL) {
+			cval->min >>= 8;
+			cval->max = 0;
+			cval->res = 1;
+		}
+		break;
 
 	case USB_ID(0x1130, 0x1620): /* Logitech Speakers S150 */
 	/* This audio device has 2 channels and it explicitly requires the
@@ -1044,14 +1071,6 @@ static void volume_control_quirks(struct usb_mixer_elem_info *cval,
 						(cval->control << 8) | 2, 7936);
 		break;
 
-	case USB_ID(0x0495, 0x3042): /* ESS Technology Asus USB DAC */
-		if ((strstr(kctl->id.name, "Playback Volume") != NULL) ||
-			strstr(kctl->id.name, "Capture Volume") != NULL) {
-			cval->min >>= 8;
-			cval->max = 0;
-			cval->res = 1;
-		}
-		break;
 	}
 }
 
@@ -1957,13 +1976,20 @@ static int parse_audio_mixer_unit(struct mixer_build *state, int unitid,
 	int input_pins, num_ins, num_outs;
 	int pin, ich, err;
 
-	if (desc->bLength < 11 || !(input_pins = desc->bNrInPins) ||
-	    desc->bLength < sizeof(*desc) + desc->bNrInPins ||
-	    !(num_outs = uac_mixer_unit_bNrChannels(desc))) {
-		usb_audio_err(state->chip,
-			      "invalid MIXER UNIT descriptor %d\n",
-			      unitid);
-		return -EINVAL;
+	if (state->mixer->protocol == UAC_VERSION_3) {
+		input_pins = badd_baiof_mu_desc.bNrInPins;
+		num_outs =
+		   (badd_baiof_mu_desc.wClusterDescrID == CLUSTER_ID_MONO) ?
+		    NUM_CHANNELS_MONO : NUM_CHANNELS_STEREO;
+	} else {
+		if (desc->bLength < 11 || !(input_pins = desc->bNrInPins) ||
+		    desc->bLength < sizeof(*desc) + desc->bNrInPins ||
+		    !(num_outs = uac_mixer_unit_bNrChannels(desc))) {
+			usb_audio_err(state->chip,
+				      "invalid MIXER UNIT descriptor %d\n",
+				      unitid);
+			return -EINVAL;
+		}
 	}
 
 	num_ins = 0;

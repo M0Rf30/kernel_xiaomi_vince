@@ -20,8 +20,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.major = 0,
 		.minor = 6,
 		.patchid = 0x00,
-		.features = ADRENO_SOFT_FAULT_DETECT |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+		.features = ADRENO_SOFT_FAULT_DETECT,
 		.pm4fw_name = "a300_pm4.fw",
 		.pfpfw_name = "a300_pfp.fw",
 		.gpudev = &adreno_a3xx_gpudev,
@@ -34,8 +33,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.major = 0,
 		.minor = 6,
 		.patchid = 0x20,
-		.features = ADRENO_SOFT_FAULT_DETECT |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+		.features = ADRENO_SOFT_FAULT_DETECT,
 		.pm4fw_name = "a300_pm4.fw",
 		.pfpfw_name = "a300_pfp.fw",
 		.gpudev = &adreno_a3xx_gpudev,
@@ -48,8 +46,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.major = 0,
 		.minor = 4,
 		.patchid = 0x00,
-		.features = ADRENO_SOFT_FAULT_DETECT |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+		.features = ADRENO_SOFT_FAULT_DETECT,
 		.pm4fw_name = "a300_pm4.fw",
 		.pfpfw_name = "a300_pfp.fw",
 		.gpudev = &adreno_a3xx_gpudev,
@@ -62,8 +59,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.major = 0,
 		.minor = 5,
 		.patchid = ANY_ID,
-		.features = ADRENO_SOFT_FAULT_DETECT |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+		.features = ADRENO_SOFT_FAULT_DETECT,
 		.pm4fw_name = "a420_pm4.fw",
 		.pfpfw_name = "a420_pfp.fw",
 		.gpudev = &adreno_a4xx_gpudev,
@@ -77,8 +73,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.minor = 0,
 		.patchid = ANY_ID,
 		.features = ADRENO_USES_OCMEM | ADRENO_WARM_START |
-			ADRENO_USE_BOOTSTRAP | ADRENO_SOFT_FAULT_DETECT |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+			ADRENO_USE_BOOTSTRAP | ADRENO_SOFT_FAULT_DETECT,
 		.pm4fw_name = "a420_pm4.fw",
 		.pfpfw_name = "a420_pfp.fw",
 		.gpudev = &adreno_a4xx_gpudev,
@@ -101,8 +96,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.features = ADRENO_USES_OCMEM  | ADRENO_WARM_START |
 			ADRENO_USE_BOOTSTRAP | ADRENO_SPTP_PC | ADRENO_PPD |
 			ADRENO_CONTENT_PROTECTION | ADRENO_PREEMPTION |
-			ADRENO_SOFT_FAULT_DETECT |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+			ADRENO_SOFT_FAULT_DETECT,
 		.pm4fw_name = "a420_pm4.fw",
 		.pfpfw_name = "a420_pfp.fw",
 		.gpudev = &adreno_a4xx_gpudev,
@@ -127,8 +121,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.patchid = ANY_ID,
 		.features = ADRENO_USES_OCMEM  | ADRENO_WARM_START |
 			ADRENO_USE_BOOTSTRAP | ADRENO_SPTP_PC |
-			ADRENO_SOFT_FAULT_DETECT |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+			ADRENO_SOFT_FAULT_DETECT,
 		.pm4fw_name = "a420_pm4.fw",
 		.pfpfw_name = "a420_pfp.fw",
 		.gpudev = &adreno_a4xx_gpudev,
@@ -151,7 +144,6 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.major = 3,
 		.minor = 0,
 		.patchid = 0,
-		.features = ADRENO_MMU_GLOBAL_MEMSZ_8M,
 		.pm4fw_name = "a530v1_pm4.fw",
 		.pfpfw_name = "a530v1_pfp.fw",
 		.gpudev = &adreno_a5xx_gpudev,
@@ -167,8 +159,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.patchid = 1,
 		.features = ADRENO_GPMU | ADRENO_SPTP_PC | ADRENO_LM |
 			ADRENO_PREEMPTION | ADRENO_64BIT |
-			ADRENO_CONTENT_PROTECTION |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+			ADRENO_CONTENT_PROTECTION,
 		.pm4fw_name = "a530_pm4.fw",
 		.pfpfw_name = "a530_pfp.fw",
 		.zap_name = "a530_zap",
@@ -193,8 +184,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.patchid = ANY_ID,
 		.features = ADRENO_GPMU | ADRENO_SPTP_PC | ADRENO_LM |
 			ADRENO_PREEMPTION | ADRENO_64BIT |
-			ADRENO_CONTENT_PROTECTION |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+			ADRENO_CONTENT_PROTECTION,
 		.pm4fw_name = "a530_pm4.fw",
 		.pfpfw_name = "a530_pfp.fw",
 		.zap_name = "a530_zap",
@@ -217,8 +207,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.major = 0,
 		.minor = 4,
 		.patchid = ANY_ID,
-		.features = ADRENO_PREEMPTION | ADRENO_64BIT |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+		.features = ADRENO_PREEMPTION | ADRENO_64BIT,
 		.pm4fw_name = "a530_pm4.fw",
 		.pfpfw_name = "a530_pfp.fw",
 		.gpudev = &adreno_a5xx_gpudev,
@@ -233,8 +222,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.minor = 5,
 		.patchid = ANY_ID,
 		.features = ADRENO_PREEMPTION | ADRENO_64BIT |
-			ADRENO_CONTENT_PROTECTION | ADRENO_CPZ_RETENTION |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+			ADRENO_CONTENT_PROTECTION | ADRENO_CPZ_RETENTION,
 		.pm4fw_name = "a530_pm4.fw",
 		.pfpfw_name = "a530_pfp.fw",
 		.zap_name = "a506_zap",
@@ -250,8 +238,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.minor = 6,
 		.patchid = ANY_ID,
 		.features = ADRENO_PREEMPTION | ADRENO_64BIT |
-			ADRENO_CONTENT_PROTECTION | ADRENO_CPZ_RETENTION |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+			ADRENO_CONTENT_PROTECTION | ADRENO_CPZ_RETENTION,
 		.pm4fw_name = "a530_pm4.fw",
 		.pfpfw_name = "a530_pfp.fw",
 		.zap_name = "a506_zap",
@@ -266,7 +253,6 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.major = 1,
 		.minor = 0,
 		.patchid = ANY_ID,
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
 		.pm4fw_name = "a530_pm4.fw",
 		.pfpfw_name = "a530_pfp.fw",
 		.gpudev = &adreno_a5xx_gpudev,
@@ -282,8 +268,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.patchid = 0,
 		.features = ADRENO_PREEMPTION | ADRENO_64BIT |
 			ADRENO_CONTENT_PROTECTION |
-			ADRENO_GPMU | ADRENO_SPTP_PC |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+			ADRENO_GPMU | ADRENO_SPTP_PC,
 		.pm4fw_name = "a530_pm4.fw",
 		.pfpfw_name = "a530_pfp.fw",
 		.zap_name = "a540_zap",
@@ -305,8 +290,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.patchid = ANY_ID,
 		.features = ADRENO_PREEMPTION | ADRENO_64BIT |
 			ADRENO_CONTENT_PROTECTION |
-			ADRENO_GPMU | ADRENO_SPTP_PC |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+			ADRENO_GPMU | ADRENO_SPTP_PC,
 		.pm4fw_name = "a530_pm4.fw",
 		.pfpfw_name = "a530_pfp.fw",
 		.zap_name = "a540_zap",
@@ -327,8 +311,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.minor = 2,
 		.patchid = ANY_ID,
 		.features = ADRENO_PREEMPTION | ADRENO_64BIT |
-			ADRENO_CONTENT_PROTECTION | ADRENO_CPZ_RETENTION |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+			ADRENO_CONTENT_PROTECTION | ADRENO_CPZ_RETENTION,
 		.pm4fw_name = "a530_pm4.fw",
 		.pfpfw_name = "a530_pfp.fw",
 		.zap_name = "a512_zap",
@@ -344,8 +327,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.minor = 8,
 		.patchid = ANY_ID,
 		.features = ADRENO_PREEMPTION | ADRENO_64BIT |
-			ADRENO_CONTENT_PROTECTION | ADRENO_CPZ_RETENTION |
-			ADRENO_MMU_GLOBAL_MEMSZ_8M,
+			ADRENO_CONTENT_PROTECTION | ADRENO_CPZ_RETENTION,
 		.pm4fw_name = "a530_pm4.fw",
 		.pfpfw_name = "a530_pfp.fw",
 		.zap_name = "a508_zap",

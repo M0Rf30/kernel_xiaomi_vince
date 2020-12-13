@@ -96,9 +96,8 @@ static int voice_send_cvp_topology_commit_cmd(struct voice_data *v);
 static int voice_send_cvp_channel_info_cmd(struct voice_data *v);
 static int voice_send_cvp_channel_info_v2(struct voice_data *v,
 					  uint32_t param_type);
-#if (0)
 static int voice_get_avcs_version_per_service(uint32_t service_id);
-#endif
+
 
 static int voice_cvs_stop_playback(struct voice_data *v);
 static int voice_cvs_start_playback(struct voice_data *v);
@@ -4345,7 +4344,6 @@ static int voice_send_cvp_mfc_config_cmd(struct voice_data *v)
 	return ret;
 }
 
-#if (0)
 static int voice_get_avcs_version_per_service(uint32_t service_id)
 {
 	int ret = 0;
@@ -4374,7 +4372,6 @@ done:
 	kfree(ver_info);
 	return ret;
 }
-#endif
 
 static void voice_mic_break_work_fn(struct work_struct *work)
 {
@@ -4403,7 +4400,6 @@ static int voice_setup_vocproc(struct voice_data *v)
 		goto fail;
 	}
 
-#if (0)
 	if (common.is_avcs_version_queried == false)
 		common.cvp_version = voice_get_avcs_version_per_service(
 				     APRV2_IDS_SERVICE_ID_ADSP_CVP_V);
@@ -4417,9 +4413,6 @@ static int voice_setup_vocproc(struct voice_data *v)
 	pr_debug("%s: CVP Version %d\n", __func__, common.cvp_version);
 
 	ret = voice_send_cvp_media_fmt_info_cmd(v);
-#else
-	ret = voice_send_cvp_device_channels_cmd(v);
-#endif
 	if (ret < 0) {
 		pr_err("%s: Set media format info failed err:%d\n", __func__,
 		       ret);
@@ -7434,7 +7427,7 @@ EXPORT_SYMBOL(voc_config_vocoder);
 
 static int32_t qdsp_mvm_callback(struct apr_client_data *data, void *priv)
 {
-	uint32_t *ptr = NULL;
+	uint32_t *ptr = NULL, min_payload_size = 0;
 	struct common_data *c = NULL;
 	struct voice_data *v = NULL;
 	struct vss_evt_voice_activity *voice_act_update = NULL;
@@ -7505,7 +7498,7 @@ static int32_t qdsp_mvm_callback(struct apr_client_data *data, void *priv)
 	}
 
 	if (data->opcode == APR_BASIC_RSP_RESULT) {
-		if (data->payload_size) {
+		if (data->payload_size >= sizeof(ptr[0]) * 2) {
 			ptr = data->payload;
 
 			pr_debug("%x %x\n", ptr[0], ptr[1]);
@@ -7575,7 +7568,13 @@ static int32_t qdsp_mvm_callback(struct apr_client_data *data, void *priv)
 	} else if (data->opcode == VSS_IMEMORY_RSP_MAP) {
 		pr_debug("%s, Revd VSS_IMEMORY_RSP_MAP response\n", __func__);
 
-		if (data->payload_size && data->token == VOIP_MEM_MAP_TOKEN) {
+		if (data->payload_size < sizeof(ptr[0])) {
+			pr_err("%s: payload has invalid size[%d]\n", __func__,
+			       data->payload_size);
+			return -EINVAL;
+		}
+
+		if (data->token == VOIP_MEM_MAP_TOKEN) {
 			ptr = data->payload;
 			if (ptr[0]) {
 				v->shmem_info.mem_handle = ptr[0];
@@ -7642,10 +7641,13 @@ static int32_t qdsp_mvm_callback(struct apr_client_data *data, void *priv)
 		pr_debug("%s: Received VSS_IVERSION_RSP_GET\n", __func__);
 
 		if (data->payload_size) {
+			min_payload_size = min_t(u32, (int)data->payload_size,
+					       CVD_VERSION_STRING_MAX_SIZE);
 			version_rsp =
 				(struct vss_iversion_rsp_get_t *)data->payload;
 			memcpy(common.cvd_version, version_rsp->version,
-			       CVD_VERSION_STRING_MAX_SIZE);
+			       min_payload_size);
+			common.cvd_version[min_payload_size - 1] = '\0';
 			pr_debug("%s: CVD Version = %s\n",
 				 __func__, common.cvd_version);
 
@@ -7846,6 +7848,11 @@ static int32_t qdsp_cvs_callback(struct apr_client_data *data, void *priv)
 
 		cvs_voc_pkt = v->shmem_info.sh_buf.buf[1].data;
 		if (cvs_voc_pkt != NULL &&  common.mvs_info.ul_cb != NULL) {
+			if (v->shmem_info.sh_buf.buf[1].size <
+			    ((3 * sizeof(uint32_t)) + cvs_voc_pkt[2])) {
+				pr_err("%s: invalid voc pkt size\n", __func__);
+				return -EINVAL;
+			}
 			/* cvs_voc_pkt[0] contains tx timestamp */
 			common.mvs_info.ul_cb((uint8_t *)&cvs_voc_pkt[3],
 					      cvs_voc_pkt[2],
@@ -8016,7 +8023,7 @@ static int32_t qdsp_cvp_callback(struct apr_client_data *data, void *priv)
 	}
 
 	if (data->opcode == APR_BASIC_RSP_RESULT) {
-		if (data->payload_size) {
+		if (data->payload_size >= (2 * sizeof(uint32_t))) {
 			ptr = data->payload;
 
 			pr_debug("%x %x\n", ptr[0], ptr[1]);

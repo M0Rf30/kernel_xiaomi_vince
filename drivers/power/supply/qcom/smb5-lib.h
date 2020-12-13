@@ -100,6 +100,12 @@ enum sink_src_mode {
 	UNATTACHED_MODE,
 };
 
+enum qc2_non_comp_voltage {
+	QC2_COMPLIANT,
+	QC2_NON_COMPLIANT_9V,
+	QC2_NON_COMPLIANT_12V
+};
+
 enum {
 	BOOST_BACK_WA			= BIT(0),
 	WEAK_ADAPTER_WA			= BIT(1),
@@ -413,11 +419,14 @@ struct smb_charger {
 	bool			fcc_stepper_enable;
 	int			charge_full_cc;
 	int			cc_soc_ref;
+	int			last_cc_soc;
 
 	/* workaround flag */
 	u32			wa_flags;
 	int			boost_current_ua;
 	bool			dbc_usbov;
+	int                     qc2_max_pulses;
+	enum qc2_non_comp_voltage qc2_unsupported_voltage;
 
 	/* extcon for VBUS / ID notification to USB for uUSB */
 	struct extcon_dev	*extcon;

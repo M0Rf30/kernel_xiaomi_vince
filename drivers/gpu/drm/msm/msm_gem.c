@@ -175,8 +175,8 @@ static void put_pages(struct drm_gem_object *obj)
 				sync_for_cpu(msm_obj);
 
 			sg_free_table(msm_obj->sgt);
-
-		kfree(msm_obj->sgt);
+			kfree(msm_obj->sgt);
+		}
 
 		if (use_pages(obj))
 			drm_gem_put_pages(obj, msm_obj->pages, true, false);
