@@ -1,7 +1,6 @@
 /*
 ** =============================================================================
 ** Copyright (c) 2016  Texas Instruments Inc.
-** Copyright (C) 2018 XiaoMi, Inc.
 **
 ** This program is free software; you can redistribute it and/or modify it under
 ** the terms of the GNU General Public License as published by the Free Software
@@ -35,14 +34,15 @@
 #include <linux/regmap.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
+#include <linux/of_irq.h>
 #include <linux/slab.h>
 #include <linux/syscalls.h>
 #include <linux/fcntl.h>
 #include <linux/uaccess.h>
-#include <linux/interrupt.h>
 #include "tas2557.h"
 #include "tas2557-core.h"
-
+#include <linux/interrupt.h>
+#include <linux/irq.h>
 #ifdef CONFIG_TAS2557_CODEC
 #include "tas2557-codec.h"
 #endif
@@ -55,6 +55,7 @@
 #ifdef ENABLE_TILOAD
 #include "tiload.h"
 #endif
+#include <linux/mfd/spk-id.h>
 
 #define LOW_TEMPERATURE_GAIN 6
 #define LOW_TEMPERATURE_COUNTER 12
@@ -66,7 +67,7 @@ static int tas2557_change_book_page(
 {
 	int nResult = 0;
 
-	if ((pTAS2557->mnCurrentBook == nBook)
+	if ((pTAS2557->mnCurrentBook == nBook) 
 		&& pTAS2557->mnCurrentPage == nPage)
 		goto end;
 
@@ -134,7 +135,7 @@ static int tas2557_dev_read(
 				TAS2557_PAGE_REG(nRegister));
 	}
 
-	nResult = tas2557_change_book_page(pTAS2557,
+	nResult = tas2557_change_book_page(pTAS2557, 
 				TAS2557_BOOK_ID(nRegister),
 				TAS2557_PAGE_ID(nRegister));
 	if (nResult >= 0) {
@@ -267,7 +268,7 @@ static int tas2557_dev_bulk_write(
 				nLength);
 	}
 
-	nResult = tas2557_change_book_page(pTAS2557,
+	nResult = tas2557_change_book_page( pTAS2557,
 				TAS2557_BOOK_ID(nRegister),
 				TAS2557_PAGE_ID(nRegister));
 	if (nResult >= 0) {
@@ -308,7 +309,7 @@ static int tas2557_dev_update_bits(
 				nMask, nValue);
 	}
 
-	nResult = tas2557_change_book_page(pTAS2557,
+	nResult = tas2557_change_book_page( pTAS2557,
 				TAS2557_BOOK_ID(nRegister),
 				TAS2557_PAGE_ID(nRegister));
 	if (nResult >= 0) {
@@ -351,7 +352,7 @@ void tas2557_enableIRQ(struct tas2557_priv *pTAS2557, bool enable)
 		}
 	} else {
 		if (gpio_is_valid(pTAS2557->mnGpioINT))
-		disable_irq_nosync(pTAS2557->mnIRQ);
+			disable_irq_nosync(pTAS2557->mnIRQ);
 		pTAS2557->mbIRQEnable = false;
 	}
 }
@@ -389,10 +390,9 @@ static void irq_work_routine(struct work_struct *work)
 	mutex_lock(&pTAS2557->file_lock);
 #endif
 
-#ifdef I2C_RESTART
-	if (pTAS2557->mnErrCode == ERROR_FAILSAFE)
+	if (pTAS2557->mnErrCode & ERROR_FAILSAFE)
 		goto program;
-#endif
+
 	if (pTAS2557->mbRuntimeSuspend) {
 		dev_info(pTAS2557->dev, "%s, Runtime Suspended\n", __func__);
 		goto end;
@@ -582,8 +582,8 @@ static void timer_work_routine(struct work_struct *work)
 		if (!(pTAS2557->mnDieTvReadCounter % LOW_TEMPERATURE_COUNTER)) {
 			nAvg /= LOW_TEMPERATURE_COUNTER;
 			dev_dbg(pTAS2557->dev, "check : avg=%d\n", nAvg);
-			if ((nAvg & 0x80000000) != 0) {
-				/* if Die temperature is below ZERO */
+			if (nAvg < -6) {
+				/* if Die temperature is below -6 degree C */
 				if (pTAS2557->mnDevCurrentGain != LOW_TEMPERATURE_GAIN) {
 					nResult = tas2557_set_DAC_gain(pTAS2557, LOW_TEMPERATURE_GAIN);
 					if (nResult < 0)
@@ -703,7 +703,6 @@ static int tas2557_i2c_probe(struct i2c_client *pClient,
 	int nResult = 0;
 	unsigned int nValue = 0;
 	const char *pFWName;
-	struct pinctrl_state *set_state;
 
 	dev_info(&pClient->dev, "%s enter\n", __func__);
 
@@ -738,13 +737,6 @@ static int tas2557_i2c_probe(struct i2c_client *pClient,
 		tas2557_hw_reset(pTAS2557);
 	}
 
-	set_state = pinctrl_lookup_state(devm_pinctrl_get(pTAS2557->dev),"smartpa_irq_active");
-	if (IS_ERR(set_state))
-                        printk(" \n cannot get smartpa pinctrl  state\n");
-                else
-                        pinctrl_select_state(devm_pinctrl_get(pTAS2557->dev), set_state);
-
-
 	pTAS2557->read = tas2557_dev_read;
 	pTAS2557->write = tas2557_dev_write;
 	pTAS2557->bulk_read = tas2557_dev_bulk_read;
@@ -757,10 +749,8 @@ static int tas2557_i2c_probe(struct i2c_client *pClient,
 	pTAS2557->hw_reset = tas2557_hw_reset;
 	pTAS2557->runtime_suspend = tas2557_runtime_suspend;
 	pTAS2557->runtime_resume = tas2557_runtime_resume;
-
-#ifdef I2C_RESTART
 	pTAS2557->mnRestart = 0;
-#endif
+
 	mutex_init(&pTAS2557->dev_lock);
 
 	/* Reset the chip */
@@ -771,11 +761,21 @@ static int tas2557_i2c_probe(struct i2c_client *pClient,
 	}
 
 	msleep(1);
+	{
+
+		int i;
+		for(i =0; i<0x10; i++){
+			tas2557_dev_read(pTAS2557, i, &nValue);
+			dev_err(pTAS2557->dev, "address:%x  value: %x\n",i, nValue);
+			}
+	}
+
+	/* Ti's original codes logic (which firmware binary selected) */
 	tas2557_dev_read(pTAS2557, TAS2557_REV_PGID_REG, &nValue);
 	pTAS2557->mnPGID = nValue;
 	if (pTAS2557->mnPGID == TAS2557_PG_VERSION_2P1) {
 		dev_info(pTAS2557->dev, "PG2.1 Silicon found\n");
-		pFWName = TAS2557_FW_NAME;
+		pFWName = TAS2557_AAC_FW_NAME;
 	} else if (pTAS2557->mnPGID == TAS2557_PG_VERSION_1P0) {
 		dev_info(pTAS2557->dev, "PG1.0 Silicon found\n");
 		pFWName = TAS2557_PG1P0_FW_NAME;
@@ -784,6 +784,16 @@ static int tas2557_i2c_probe(struct i2c_client *pClient,
 		dev_info(pTAS2557->dev, "unsupport Silicon 0x%x\n", pTAS2557->mnPGID);
 		goto err;
 	}
+
+	/* Use our codecs logic to select Firmware binary */
+	if (pTAS2557->mnSpkType == VENDOR_ID_GOER)
+		pFWName = TAS2557_GOER_FW_NAME;
+	else if (pTAS2557->mnSpkType == VENDOR_ID_AAC)
+		pFWName = TAS2557_AAC_FW_NAME;
+	else if (pTAS2557->mnSpkType == VENDOR_ID_SSI)
+		pFWName = TAS2557_SSI_FW_NAME;
+	else
+		pFWName = TAS2557_DEFAULT_FW_NAME;
 
 	if (gpio_is_valid(pTAS2557->mnGpioINT)) {
 		nResult = gpio_request(pTAS2557->mnGpioINT, "TAS2557-IRQ");
@@ -834,7 +844,7 @@ static int tas2557_i2c_probe(struct i2c_client *pClient,
 #ifdef ENABLE_TILOAD
 	tiload_driver_init(pTAS2557);
 #endif
-
+	dev_dbg(pTAS2557->dev, " firmware name %s\n", pFWName);
 	hrtimer_init(&pTAS2557->mtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	pTAS2557->mtimer.function = temperature_timer_func;
 	INIT_WORK(&pTAS2557->mtimerwork, timer_work_routine);
