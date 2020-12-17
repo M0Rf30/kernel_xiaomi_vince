@@ -1,7 +1,6 @@
 /*
 ** =============================================================================
 ** Copyright (c) 2016  Texas Instruments Inc.
-** Copyright (C) 2018 XiaoMi, Inc.
 **
 ** This program is free software; you can redistribute it and/or modify it under
 ** the terms of the GNU General Public License as published by the Free Software
@@ -26,8 +25,6 @@
 #include <linux/regmap.h>
 #include <linux/workqueue.h>
 #include <linux/timer.h>
-
-#define I2C_RESTART
 
 /* Page Control Register */
 #define TAS2557_PAGECTL_REG			0
@@ -131,7 +128,7 @@
 #define TAS2557_GPIO10_PIN_REG			TAS2557_REG(0, 1, 70)
 #define TAS2557_GPI_PIN_REG				TAS2557_REG(0, 1, 77)	/*B0_P1_R0x4d */
 #define TAS2557_GPIO_HIZ_CTRL1_REG		TAS2557_REG(0, 1, 79)
-#define TAS2557_GPIO_HIZ_CTRL2_REG		TAS2557_REG(0, 1, 80)
+#define TAS2557_GPIO_HIZ_CTRL2_REG		TAS2557_REG(0, 1, 80)	/*B0_P1_R0x50 */
 #define TAS2557_GPIO_HIZ_CTRL3_REG		TAS2557_REG(0, 1, 81)
 #define TAS2557_GPIO_HIZ_CTRL4_REG		TAS2557_REG(0, 1, 82)
 #define TAS2557_GPIO_HIZ_CTRL5_REG		TAS2557_REG(0, 1, 83)
@@ -176,8 +173,8 @@
 
 #define TAS2557_SA_PG1P0_CHL_CTRL_REG	TAS2557_REG(0, 58, 120)	/* B0_P0x3a_R0x78 */
 
-#define TAS2557_TEST_MODE_REG			TAS2557_REG(0, 253, 13)
-#define TAS2557_BROADCAST_REG			TAS2557_REG(0, 253, 54)
+#define TAS2557_TEST_MODE_REG			TAS2557_REG(0, 253, 13)	/* B0_P0xfd_R0x0d */
+#define TAS2557_BROADCAST_REG			TAS2557_REG(0, 253, 54)	/* B0_P0xfd_R0x36 */
 #define TAS2557_CRYPTIC_REG			TAS2557_REG(0, 253, 71)
 #define TAS2557_PG2P1_CALI_R0_REG		TAS2557_REG(0x8c, 0x2f, 0x40)
 #define TAS2557_PG1P0_CALI_R0_REG		TAS2557_REG(0x8c, 0x2f, 0x28)
@@ -291,8 +288,12 @@
 /* B100P0R31 - TAS2557_CLK_MISC_REG */
 #define TAS2557_DSP_CLK_FROM_PLL		(0x1 << 5)
 
-#define TAS2557_FW_NAME     "tas2557_uCDSP.bin"
-#define TAS2557_PG1P0_FW_NAME     "tas2557_pg1p0_uCDSP.bin"
+#define TAS2557_AAC_FW_NAME     "tas2557_uCDSP_aac.bin"
+#define TAS2557_GOER_FW_NAME    "tas2557_uCDSP_goer.bin"
+#define TAS2557_SSI_FW_NAME     "tas2557_uCDSP_ssi.bin"
+#define TAS2557_DEFAULT_FW_NAME "tas2557_uCDSP.bin"
+
+#define TAS2557_PG1P0_FW_NAME   "tas2557_pg1p0_uCDSP.bin"
 
 #define	TAS2557_APP_ROM1MODE	0
 #define	TAS2557_APP_ROM2MODE	1
@@ -320,6 +321,7 @@
 #define	ERROR_UNDER_VOLTAGE	0x00000800
 #define	ERROR_OVER_CURRENT	0x00001000
 #define	ERROR_CLASSD_PWR	0x00002000
+#define	ERROR_SAFE_GUARD	0x00004000
 #define	ERROR_FAILSAFE		0x40000000
 
 struct TBlock {
@@ -360,6 +362,8 @@ struct TConfiguration {
 	unsigned int mnProgram;
 	unsigned int mnPLL;
 	unsigned int mnSamplingRate;
+	unsigned char mnPLLSrc;
+	unsigned int mnPLLSrcRate;
 	struct TData mData;
 };
 
@@ -415,6 +419,7 @@ struct tas2557_priv {
 	unsigned char mnCurrentPage;
 	bool mbTILoadActive;
 	bool mbPowerUp;
+	bool mbMute;
 	bool mbLoadConfigurationPrePowerUp;
 	bool mbLoadCalibrationPostPowerUp;
 	bool mbCalibrationLoaded;
@@ -465,6 +470,7 @@ struct tas2557_priv {
 	bool mbRuntimeSuspend;
 
 	unsigned int mnErrCode;
+	unsigned int mnRestart;
 
 	/* for configurations with maximum TLimit 0x7fffffff,
 	 * bypass calibration update, usually used in factory test
@@ -480,10 +486,10 @@ struct tas2557_priv {
 	int mnCurrentReg;
 	struct mutex file_lock;
 #endif
+	int mnSpkType;
+	struct device_node *spk_id_gpio_p;
 
-#ifdef I2C_RESTART
-	int mnRestart;
-#endif
+
 };
 
 #endif /* _TAS2557_H */

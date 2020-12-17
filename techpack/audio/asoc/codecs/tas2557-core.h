@@ -1,7 +1,6 @@
 /*
 ** =============================================================================
 ** Copyright (c) 2016  Texas Instruments Inc.
-** Copyright (C) 2018 XiaoMi, Inc.
 **
 ** This program is free software; you can redistribute it and/or modify it under
 ** the terms of the GNU General Public License as published by the Free Software
@@ -61,6 +60,7 @@ struct TYCRC {
 };
 
 int tas2557_enable(struct tas2557_priv *pTAS2557, bool bEnable);
+int tas2557_permanent_mute(struct tas2557_priv *pTAS2557, bool bmute);
 int tas2557_SA_DevChnSetup(struct tas2557_priv *pTAS2557, unsigned int mode);
 int tas2557_get_die_temperature(struct tas2557_priv *pTAS2557, int *pTemperature);
 int tas2557_set_sampling_rate(struct tas2557_priv *pTAS2557, unsigned int nSamplingRate);
@@ -76,4 +76,6 @@ int tas2557_parse_dt(struct device *dev, struct tas2557_priv *pTAS2557);
 int tas2557_get_DAC_gain(struct tas2557_priv *pTAS2557, unsigned char *pnGain);
 int tas2557_set_DAC_gain(struct tas2557_priv *pTAS2557, unsigned int nGain);
 int tas2557_configIRQ(struct tas2557_priv *pTAS2557);
+int spk_id_get(struct device_node *np);
+
 #endif /* _TAS2557_CORE_H */
